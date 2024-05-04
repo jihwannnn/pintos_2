@@ -20,6 +20,60 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
+static void argument_stack(const char **argv, int argc, void **esp);
+
+/* jh 추가 함수1 */
+static void argument_stack(const char **argv, int argc, void **esp)
+{
+  int i;
+  char *token;
+  char **argv_addr = calloc(argc, sizeof(char *));
+
+  /* jh arguments 저장 */
+  for (i = argc-1; i >= 0; i--)
+    {
+      token = argv[i];
+      *esp-= strlen(token) + 1;
+      memcpy(*esp, token, strlen(token) + 1);
+      argv_addr[i] = *esp;
+    }
+  
+  /* jh word alignment */
+  while((int)*esp%4!=0)
+  {
+    *esp-= 1;
+    memset(*esp, 0, 1);
+  }
+
+  /* jh Null Pointer와 argv_addr */
+
+  *esp-= 4;
+  memset(*esp, 0, 4);
+
+  for (i = argc-1; i >= 0; i--)
+  {
+    token = argv_addr[i];
+    *esp-= sizeof(char *);
+    memcpy(*esp, token, sizeof(char *));
+  }
+
+  /* jh argv */
+  *esp-= sizeof(char **);
+  memcpy(*esp, &argv, sizeof(char **));
+
+  /* jh argc */
+  *esp-= 4;
+  memcpy(*esp, &argc, 4);
+
+  /* jh fake address */
+  *esp-= 4;
+  memset(*esp, 0, 4);
+
+  free (argv);
+  free (argv_addr);
+
+  hex_dump(*esp, *esp, 100, true);
+}
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -40,11 +94,11 @@ process_execute (const char *file_name)
 
   /* Parse file_name for get file_name without arguments */
   char *saveptr;
-  file_name = strtok_r(file_name, " ", &saveptr);
-
+  char *file_name_first = strtok_r(file_name, " ", &saveptr);
+  // print("\nfile_name_first = %s\n", file_name_first);
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (file_name_first, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   return tid;
@@ -59,6 +113,37 @@ start_process (void *file_name_)
   struct intr_frame if_;
   bool success;
 
+  /* jh 추가 선언 */
+  int argc = 0;
+  char *saveptr;
+  char *token;
+
+  /* jh argc 세기 */
+  for (token = strtok_r (file_name, " ", &saveptr); token != NULL; token = strtok_r (NULL, " ", &saveptr))
+  {
+    argc++;
+    // printf("tokenized file name : %s\n", token);
+  }
+  // printf("arg count : %d\n\n", argc);
+  /* jh argv 선언 1 */
+  char **argv = calloc(argc, sizeof(char*));
+
+  /* jh argv 선언 2 */
+  // char *argv[128];
+  
+  int i = 0;
+
+  file_name = file_name_;
+  /* jh argv에 넣기 */
+  for (token = strtok_r (file_name, " ", &saveptr); token != NULL; token = strtok_r (NULL, " ", &saveptr))
+  {
+    argv[i]= token;
+    i++;
+  }
+
+  /* jh name 받기 */
+  file_name = strtok_r (file_name_, " ", &saveptr);
+
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
@@ -67,9 +152,26 @@ start_process (void *file_name_)
   success = load (file_name, &if_.eip, &if_.esp);
 
   /* If load failed, quit. */
-  palloc_free_page (file_name);
-  if (!success) 
+  // palloc_free_page (file_name);
+  
+  if (!success)
+  {
+    /* jh If load failed, quit. 추가 */
+    palloc_free_page (file_name);
+
+    /* jh free argv 하기 */
+    free (argv);
+
     thread_exit ();
+  }
+
+  /* jh 성공했을때 */
+  else if (success)
+  {
+    argument_stack(argv, argc, &if_.esp);
+  }
+
+  
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -93,7 +195,9 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  //while(1);
+  /* jh 2-1 test를 위한 무한 루프 */
+  while(1) {}
+
   return -1;
 }
 
