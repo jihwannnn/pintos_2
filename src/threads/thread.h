@@ -121,19 +121,31 @@ struct thread
 
     /* pt 2-2, monitor used to wait the child, owned by wait-syscall
     * and waiting for child t load executable */
-    struct lock lock_child;
-    struct condition cond_child;
+    struct lock *lock_child;
+    struct condition *cond_child;
 
     /* pt 2-2,  list of children, which should be a list of struct child_status */
     struct list children;
 
     /* pt 2-2, file struct represents the execuatable of the current thread */
     struct file *exec_file;
+
+    // pt 2-2 check if exit is called for the thread
 #endif
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
+
+// pt 2-2 child status
+struct child_status 
+   {
+      tid_t child_id;
+      bool is_exit_called;
+      bool has_been_waited;
+      int child_exit_status;
+      struct list_elem elem_child_status;  
+   };
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
@@ -191,5 +203,8 @@ int thread_get_nice (void);
 void thread_set_nice (int nice);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+// pt 2-2 thread_get_by_id
+struct thread *thread_get_by_id (tid_t id);
 
 #endif /* threads/thread.h */

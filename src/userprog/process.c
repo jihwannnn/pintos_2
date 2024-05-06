@@ -17,6 +17,7 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "threads/synch.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -117,6 +118,7 @@ start_process (void *file_name_)
   int argc = 0;
   char *saveptr;
   char *token;
+  int load_status;
 
   /* jh argc 세기 */
   for (token = strtok_r (file_name, " ", &saveptr); token != NULL; token = strtok_r (NULL, " ", &saveptr))
@@ -156,6 +158,8 @@ start_process (void *file_name_)
   
   if (!success)
   {
+    load_status = -1;
+  
     /* jh If load failed, quit. 추가 */
     palloc_free_page (file_name);
 
@@ -168,6 +172,8 @@ start_process (void *file_name_)
   /* jh 성공했을때 */
   else if (success)
   {
+    load_status = 1;
+
     argument_stack(argv, argc, &if_.esp);
   }
 
@@ -193,12 +199,65 @@ start_process (void *file_name_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid) 
 {
   /* jh 2-1 test를 위한 무한 루프 */
-  while(1) {}
+  // while(1) {}
 
-  return -1;
+  int status;
+  // pt 2-2 tid valid한지 확인
+  if (child_tid == TID_ERROR)
+  {
+    status = -1;
+    return status;
+  }
+
+  // pt 2-2 cur의 children에서 child_tid인 target찾기
+  struct thread *cur = thread_current();
+  struct thread *child;
+  bool no_child_found = true;
+  struct list_elem *e;
+  
+
+  for (e = list_begin (&(cur->children)); e!= list_end (&(cur->children)); e = list_next (e))
+  {
+    child = list_entry(e, struct thread, elem);
+    if (child->tid == child_tid)
+    {
+      no_child_found = false;
+      break;
+    }
+  }
+
+  if (no_child_found)
+  {
+    status = -1;
+    return status;
+  }
+  
+  lock_acquire(&cur->lock_child);
+
+  while(thread_get_by_id(child_tid) != NULL)
+    cond_wait(&cur->cond_child, &cur->lock_child);
+
+  if (child->is_exit_called)
+    cond_signal(&cur->cond_child, &cur->lock_child);
+
+  else
+  {
+    status = -1;
+    return status;
+  }
+
+  if (!child->has_been_waited)
+  {
+    status = child->exit_status;
+    child -> has_been_waited = true;
+  }
+
+  lock_release(&cur->lock_child);
+
+  return status;
 }
 
 /* Free the current process's resources. */
