@@ -107,6 +107,28 @@ struct thread
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
+    
+    // pt 2-2, 추가 선언
+
+    // pt 2-2, thread id of parent
+    tid_t parent_id;
+
+    /* pt 2-2, signal to indicate the child's executable-loading status 
+    * 0: has not been loaded
+    * -1: load failed
+    * 1: load successed */
+    int child_load_status;
+
+    /* pt 2-2, monitor used to wait the child, owned by wait-syscall
+    * and waiting for child t load executable */
+    struct lock lock_child;
+    struct condition cond_child;
+
+    /* pt 2-2,  list of children, which should be a list of struct child_status */
+    struct list children;
+
+    /* pt 2-2, file struct represents the execuatable of the current thread */
+    struct file *exec_file;
 #endif
 
     /* Owned by thread.c. */
