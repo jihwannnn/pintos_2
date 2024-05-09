@@ -706,15 +706,19 @@ struct thread *
 thread_get_by_id (tid_t id)
 {
   ASSERT (id != TID_ERROR);
+
   struct list_elem *e;
   struct thread *t;
-  e = list_tail (&all_list);
-  while ((e = list_prev (e)) != list_head (&all_list))
+
+  
+  for (e = list_begin(&all_list); e != list_tail(&all_list); e = list_next(e)) 
     {
       t = list_entry (e, struct thread, allelem);
+
       if (t->tid == id && t->status != THREAD_DYING)
         return t;
     }
+    
   return NULL;
 }
 
@@ -813,6 +817,20 @@ init_thread (struct thread *t, const char *name, int priority)
   t->recent_cpu = 0;
 
   t->magic = THREAD_MAGIC;
+
+  /* pt 2-2 userporg을 위한 init */
+  #ifdef USERPROG
+
+  
+  t->child_load_status = 0;
+  lock_init (&t->lock_child);
+  cond_init (&t->cond_child);
+
+  
+  list_init (&t->children);
+
+  #endif
+
   list_push_back (&all_list, &t->allelem);
 }
 

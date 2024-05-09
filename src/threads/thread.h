@@ -130,7 +130,10 @@ struct thread
     /* pt 2-2, file struct represents the execuatable of the current thread */
     struct file *exec_file;
 
-    // pt 2-2 check if exit is called for the thread
+    // pt 2-3 fdt imp
+    struct fdt *t_fdt;
+  
+
 #endif
 
     /* Owned by thread.c. */
@@ -143,9 +146,16 @@ struct child_status
       tid_t child_id;
       bool is_exit_called;
       bool has_been_waited;
-      int child_exit_status;
-      struct list_elem elem_child_status;  
+      int exit_status;
+      struct list_elem child_elem;  
    };
+
+struct fdt
+   {
+      struct file **fdt_pointer;
+      int *fdt_index;
+   };
+   
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
