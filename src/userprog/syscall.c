@@ -30,7 +30,6 @@ struct file_descriptor
 
 struct list open_files; // open list
 struct lock fs_lock;    // lock for files
-static int fs_id = 0;
 
 
 // pt 2-2 함수 추가
@@ -144,7 +143,7 @@ syscall_handler (struct intr_frame *f)
   }
 
   
-  printf ("system call!\n");
+  // printf ("system call %d!\n", num);
 
 }
 
@@ -166,7 +165,7 @@ is_valid_ptr (const void *usr_ptr)
 int 
 wait (pid_t pid)
 {
-  process_wait(pid);
+  return process_wait(pid);
 }
 
 void 
@@ -178,6 +177,7 @@ exit (int status)
   struct file_descriptor *fd_struct;
   
   struct thread *parent = thread_get_by_id(cur->parent_id);
+
 
   if(parent != NULL)
   {
@@ -199,6 +199,7 @@ exit (int status)
 
   
   // palloc_free_page((void *)cur->t_fdt->fdt_pointer);
+  printf("%s: exit(%d)\n", thread_name(), status);
 
   thread_exit();
 }
@@ -214,6 +215,7 @@ exec (const char *cmd_line)
 
   cur->child_load_status = 0;
   tid = process_execute(cmd_line);
+
   lock_acquire(&cur->lock_child);
 
   while(cur->child_load_status == 0)
@@ -485,7 +487,9 @@ close_open_file (int fd)
 static int
 allocate_fd(void)
 {
-  return fs_id++;
+  static int fs_id_t = 0;
+  int fs_id = fs_id_t++;
+  return fs_id;
 }
 
 void 

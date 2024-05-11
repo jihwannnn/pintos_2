@@ -176,7 +176,8 @@ sub compare_output {
 			&& !/^ eax=.* ebx=.* ecx=.* edx=.*/
 			&& !/^ esi=.* edi=.* esp=.* ebp=.*/
 			&& !/^ cs=.* ds=.* es=.* ss=.*/, @output);
-    }
+	}
+
     die "unknown option " . (keys (%options))[0] . "\n" if %options;
 
     my ($msg);

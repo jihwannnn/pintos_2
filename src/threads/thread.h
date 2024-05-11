@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/synch.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -121,8 +122,10 @@ struct thread
 
     /* pt 2-2, monitor used to wait the child, owned by wait-syscall
     * and waiting for child t load executable */
-    struct lock *lock_child;
-    struct condition *cond_child;
+    struct lock lock_child;
+    struct condition cond_child;
+    // pt debugging
+    // struct locking locks;
 
     /* pt 2-2,  list of children, which should be a list of struct child_status */
     struct list children;
@@ -155,6 +158,13 @@ struct fdt
       struct file **fdt_pointer;
       int *fdt_index;
    };
+
+// pt debugging locking이 제대로 안되서 추가
+// struct locking
+//    {
+//       struct lock *lock_child;
+//       struct condition *cond_child;
+//    };
    
 
 /* If false (default), use round-robin scheduler.

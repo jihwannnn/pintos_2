@@ -465,6 +465,18 @@ thread_create (const char *name, int priority,
 
   intr_set_level (old_level);
 
+  //pt 2-3 file struct
+  // #ifdef USERPROG
+	// t->t_fdt->fdt_pointer = (struct file **)palloc_get_page(PAL_ZERO);
+	// if (t->t_fdt->fdt_pointer == NULL)
+	// {
+	// 	palloc_free_page((void *)t->t_fdt->fdt_pointer);
+	// 	return TID_ERROR;
+	// }
+	// t->t_fdt->fdt_pointer[0] = 0; /* For stdin. */
+	// t->t_fdt->fdt_pointer[1] = 1; /* For stdout. */
+  // #endif
+
   /* Add to run queue. */
   thread_unblock (t);
 
@@ -716,9 +728,14 @@ thread_get_by_id (tid_t id)
       t = list_entry (e, struct thread, allelem);
 
       if (t->tid == id && t->status != THREAD_DYING)
+      {
         return t;
+      }
     }
-    
+
+  
+  
+
   return NULL;
 }
 
@@ -821,15 +838,14 @@ init_thread (struct thread *t, const char *name, int priority)
   /* pt 2-2 userporg을 위한 init */
   #ifdef USERPROG
 
-  
   t->child_load_status = 0;
+  
   lock_init (&t->lock_child);
   cond_init (&t->cond_child);
-
-  
   list_init (&t->children);
 
   #endif
+
 
   list_push_back (&all_list, &t->allelem);
 }

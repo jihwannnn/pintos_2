@@ -123,7 +123,9 @@ process_execute (const char *file_name)
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (file_name_first, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
+  {
     palloc_free_page (fn_copy);
+  }
 
   // pt 2-2 child status 저장
   else
@@ -136,9 +138,12 @@ process_execute (const char *file_name)
       child->child_id = tid;
       child->is_exit_called = false;
       child->has_been_waited = false;
-      list_push_back (&cur->children, &child->child_elem);
+      list_push_back(&cur->children, &child->child_elem);
     }
   }
+
+  struct thread *t = thread_get_by_id(tid);
+  t->parent_id = cur->tid;
 
   return tid;
 }
@@ -153,26 +158,26 @@ start_process (void *file_name_)
   bool success;
 
   /* jh 추가 선언 */
-  int argc = 0;
-  char *saveptr;
-  char *token;
+  // int argc = 0;
+  // char *saveptr;
+  // char *token;
   int load_status;
-  int count = 128;
+  // int count = 128;
 
   /* jh argv 선언 1 */
-  char **argv = calloc(count, sizeof(char*));
+  // char **argv = calloc(count, sizeof(char*));
 
   struct thread *parent;
   struct thread *cur = thread_current();
 
-  int i;
+  // int i;
 
   /* jh argc 세기 */
-  for (token = strtok_r(file_name, " ", &saveptr), i = 0; token != NULL; token = strtok_r(NULL, " ", &saveptr), i++)
-  {
-    argc++;
-    argv[i] = token;
-  }
+  // for (token = strtok_r(file_name, " ", &saveptr), i = 0; token != NULL; token = strtok_r(NULL, " ", &saveptr), i++)
+  // {
+  //   argc++;
+  //   argv[i] = token;
+  // }
   
   /* jh argv에 넣기 */
   // for (token = strtok_r(file_name, " ", &saveptr); token != NULL; token = strtok_r(NULL, " ", &saveptr))
@@ -200,10 +205,11 @@ start_process (void *file_name_)
     load_status = -1;
     
     /* jh free argv 하기 */
-    free(argv);
+    // free(argv);
     thread_exit();
     /* If load failed, quit. */
     palloc_free_page (file_name);
+
   }
 
   /* jh 성공했을때 */
@@ -221,12 +227,12 @@ start_process (void *file_name_)
       lock_acquire(&parent->lock_child);
 
       parent->child_load_status = load_status;
-      cond_signal(&parent->cond_child, &parent->lock_child);
+
+      if(&parent->cond_child.waiters != NULL)
+        cond_signal(&parent->cond_child, &parent->lock_child);
       
       lock_release(&parent->lock_child);
     }
-
-  
 
   
 
@@ -269,7 +275,9 @@ process_wait (tid_t child_tid)
   struct child_status *child;
   bool no_child_found = true;
   struct list_elem *e;
-  
+
+  int i = 100;
+
 
   for (e = list_begin(&cur->children); e != list_tail(&cur->children); e = list_next(e))
   {
@@ -288,10 +296,13 @@ process_wait (tid_t child_tid)
     status = -1;
     return status;
   }
-  
+
   lock_acquire(&cur->lock_child);
+
   while(thread_get_by_id(child_tid) != NULL)
+  {
     cond_wait(&cur->cond_child, &cur->lock_child);
+  }
 
   if (child->is_exit_called)
   {
@@ -323,6 +334,8 @@ process_exit (void)
   struct list_elem *e;
   struct thread *parent;
 
+
+
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -348,10 +361,13 @@ process_exit (void)
       free(child);
     }
 
-  // file_allow_write(cur->exec_file);
+  if (cur->exec_file != NULL)
+    file_allow_write (cur->exec_file);
+
   close_file_by_owner(cur->tid);
   
   parent = thread_get_by_id(cur->parent_id);
+
 
   if(parent != NULL)
     {
@@ -363,7 +379,8 @@ process_exit (void)
       cond_signal(&parent->cond_child, &parent->lock_child);
 
       lock_release(&parent->lock_child);
-     }
+    }
+  
 }
 
 /* Sets up the CPU for running user code in the current
@@ -473,7 +490,18 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
   /* Open executable file. */
 
-  file = filesys_open (file_name);
+  // pt filename 받기
+  char *fn_copy = palloc_get_page (0);
+  char *saveptr;
+
+  if (fn_copy == NULL)
+    return TID_ERROR;
+
+  strlcpy (fn_copy, file_name, PGSIZE);
+  char *file_real_name = strtok_r(fn_copy, " ", &saveptr);
+  
+
+  file = filesys_open (file_real_name);
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", file_name);
@@ -571,6 +599,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
   // pt 2-3
   // file_allow_write(file);
+  palloc_free_page (fn_copy);
 
   return success;
 }
@@ -754,7 +783,7 @@ setup_stack (void **esp, char * file_name)
   *esp-=sizeof(int);
   memcpy(*esp,&zero,sizeof(int));
 
-  hex_dump(*esp, *esp, PHYS_BASE - (*esp), true);
+  // hex_dump(*esp, *esp, PHYS_BASE - (*esp), true);
 
   return success;
 }
