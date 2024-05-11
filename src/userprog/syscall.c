@@ -146,7 +146,6 @@ syscall_handler (struct intr_frame *f)
   
   printf ("system call!\n");
 
-  thread_exit ();
 }
 
 // pt 2-2 ptr이 vaild한지 확인
@@ -176,8 +175,10 @@ exit (int status)
   struct thread *cur = thread_current();
   struct child_status *child;
   struct list_elem *e;
+  struct file_descriptor *fd_struct;
   
   struct thread *parent = thread_get_by_id(cur->parent_id);
+
   if(parent != NULL)
   {
     for (e = list_begin(&parent->children); e != list_tail(&parent->children); e = list_next(e))
@@ -193,6 +194,11 @@ exit (int status)
       }
     }
   }
+
+  close_file_by_owner(cur->tid);
+
+  
+  // palloc_free_page((void *)cur->t_fdt->fdt_pointer);
 
   thread_exit();
 }
@@ -337,6 +343,7 @@ get_open_file (int fd)
 int 
 read (int fd, void *buffer, unsigned size)
 {
+  
   int status;
   struct file_descriptor *fd_struct;
 

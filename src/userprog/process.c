@@ -19,66 +19,81 @@
 #include "threads/vaddr.h"
 #include "threads/synch.h"
 
+
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 static void argument_stack(const char **argv, int argc, void **esp);
 
 /* jh 추가 함수1 */
-static void argument_stack(const char **argv, int argc, void **esp)
-{
-  int i;
-  char *token;
-  char **argv_addr = calloc(argc+1, sizeof(char *));
+// static void argument_stack(const char **argv, int argc, void **esp)
+// {
+//   int i;
+//   char *token;
+//   char **argv_addr = calloc(argc+1, sizeof(char *));
 
-  /* jh arguments 저장 */
-  for (i = argc-1; i >= 0; i--)
-    {
-      token = argv[i];
-      *esp-= strlen(token) + 1;
-      memcpy(*esp, token, strlen(token) + 1);
-      argv_addr[i] = *esp;
-    }
   
-  /* jh word alignment */
-  while((int)*esp%4!=0)
-  {
-    *esp-= 1;
-    memset(*esp, 0, 1);
-  }
 
-  /* jh Null Pointer와 argv_addr */
+//   /* jh arguments 저장 */
+//   for (i = argc-1; i >= 0; i--)
+//     {
 
-  for (i = argc; i >= 0; i--)
-  {
-    if (i == argc)
-    {
-      *esp-= 4;
-      memset(*esp, 0, 4);
-    }
+//       token = argv[i];
+//       *esp-= strlen(token) + 1;
+//       memcpy(*esp, token, strlen(token) + 1);
+//       argv_addr[i] = *esp;
+//       printf("%s and %p\n", token, *esp);
+//     }
+  
+//   /* jh word alignment */
+//   while((int)*esp%4!=0)
+//   {
+//     *esp-= 1;
+//     memset(*esp, 0, 1);
+//     printf("%p\n", *esp);
+//   }
 
-    else
-    {
-    token = argv_addr[i];
-    *esp-= sizeof(char *);
-    memcpy(*esp, token, sizeof(char *));
-    }
-  }
+//   /* jh Null Pointer와 argv_addr */
 
-  /* jh argv */
-  *esp-= sizeof(char **);
-  memcpy(*esp, &argv, sizeof(char **));
+//   for (i = argc; i >= 0; i--)
+//   {
+//     if (i == argc)
+//     {
+//       *esp-= 4;
+//       memset(*esp, 0, 4);
+//       printf("%p\n", *esp);
+//     }
 
-  /* jh argc */
-  *esp-= 4;
-  memcpy(*esp, &argc, 4);
+//     else
+//     {
+//       token = argv_addr[i];
+//       *esp-= sizeof(char *);
+//       memcpy(*esp, token, sizeof(char *));
+//       printf("%p and %p\n", token, *esp);
+//     }
+//   }
 
-  /* jh fake address */
-  *esp-= 4;
-  memset(*esp, 0, 4);
+//   /* jh argv */
+//   *esp-= 4;
+//   // memcpy(*esp, *(esp)+4, 4);
+//   // printf("%p and %p\n", *(esp)+4, *esp);
 
-  hex_dump(*esp, *esp, 100, true);
+//   memcpy(*esp, argv_addr[0], 4);
+//   printf("%p and %p\n", argv_addr[0], *esp);
 
-}
+
+//   /* jh argc */
+//   *esp-= 4;
+//   memcpy(*esp, &argc, 4);
+//   printf("%p and %p\n", &argc, *esp);
+
+//   /* jh fake address */
+//   *esp-= 4;
+//   memset(*esp, 0, 4);
+//   printf("%p\n", *esp);
+
+//   hex_dump(*esp, *esp, PHYS_BASE-*esp, true);
+
+// }
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -122,24 +137,7 @@ process_execute (const char *file_name)
       child->is_exit_called = false;
       child->has_been_waited = false;
       list_push_back (&cur->children, &child->child_elem);
-
-      // pt 2-3 fdt init
-      struct thread *t = thread_get_by_id(tid);
-      t->t_fdt->fdt_pointer = calloc(64, sizeof(struct file *));
-
-      int numbers[64];
-      int i;
-      for (i=0; i<64; i++)
-      {
-        numbers[i] = i;
-      }
-
-      t->t_fdt->fdt_index = numbers;
     }
-
-    
-
-    // palloc_free_page (fn_copy);
   }
 
   return tid;
@@ -159,28 +157,31 @@ start_process (void *file_name_)
   char *saveptr;
   char *token;
   int load_status;
+  int count = 128;
+
+  /* jh argv 선언 1 */
+  char **argv = calloc(count, sizeof(char*));
 
   struct thread *parent;
   struct thread *cur = thread_current();
 
+  int i;
+
   /* jh argc 세기 */
-  for (token = strtok_r(file_name_, " ", &saveptr); token != NULL; token = strtok_r(NULL, " ", &saveptr))
+  for (token = strtok_r(file_name, " ", &saveptr), i = 0; token != NULL; token = strtok_r(NULL, " ", &saveptr), i++)
   {
     argc++;
+    argv[i] = token;
   }
-
-  /* jh argv 선언 1 */
-  char **argv = calloc(argc, sizeof(char*));
   
-  int i = 0;
-
   /* jh argv에 넣기 */
-  for (token = strtok_r(file_name_, " ", &saveptr); token != NULL; token = strtok_r(NULL, " ", &saveptr))
-  {
-    argv[i]= token;
-    i++;
-  }
-
+  // for (token = strtok_r(file_name, " ", &saveptr); token != NULL; token = strtok_r(NULL, " ", &saveptr))
+  // {
+  //   argv[i]= token;
+  //   printf("%s\n", token);
+  //   i++;
+  // }
+  
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -188,6 +189,9 @@ start_process (void *file_name_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
+
+
+  
 
   
   
@@ -206,7 +210,7 @@ start_process (void *file_name_)
   else if(success)
   {
     load_status = 1;
-    argument_stack(argv, argc, &if_.esp);
+    // argument_stack(argv, argc, &if_.esp);
   }
 
   // pt 2-2 추가 구현..
@@ -233,6 +237,7 @@ start_process (void *file_name_)
      we just point the stack pointer (%esp) to our stack frame
      and jump to it. */
   asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory");
+
   NOT_REACHED ();
 }
 
@@ -275,6 +280,8 @@ process_wait (tid_t child_tid)
       break;
     }
   }
+  
+  
 
   if (no_child_found)
   {
@@ -283,7 +290,6 @@ process_wait (tid_t child_tid)
   }
   
   lock_acquire(&cur->lock_child);
-
   while(thread_get_by_id(child_tid) != NULL)
     cond_wait(&cur->cond_child, &cur->lock_child);
 
@@ -342,9 +348,11 @@ process_exit (void)
       free(child);
     }
 
+  // file_allow_write(cur->exec_file);
   close_file_by_owner(cur->tid);
   
   parent = thread_get_by_id(cur->parent_id);
+
   if(parent != NULL)
     {
       lock_acquire (&parent->lock_child);
@@ -488,7 +496,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   /* Read program headers. */
 
   // pt 2-3
-  file_deny_write(file);
+  // file_deny_write(file);
 
   file_ofs = ehdr.e_phoff;
   for (i = 0; i < ehdr.e_phnum; i++) 
@@ -562,7 +570,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   file_close (file);
 
   // pt 2-3
-  file_allow_write(file);
+  // file_allow_write(file);
 
   return success;
 }

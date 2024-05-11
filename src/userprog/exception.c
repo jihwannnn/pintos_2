@@ -140,6 +140,7 @@ page_fault (struct intr_frame *f)
      be assured of reading CR2 before it changed). */
   intr_enable ();
 
+
   /* Count page faults. */
   page_fault_cnt++;
 
@@ -156,6 +157,8 @@ page_fault (struct intr_frame *f)
           not_present ? "not present" : "rights violation",
           write ? "writing" : "reading",
           user ? "user" : "kernel");
+
+   printf("%p and %p", f->esp, f->eax);
   kill (f);
 }
 
