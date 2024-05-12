@@ -4,12 +4,16 @@
 #include "userprog/gdt.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "userprog/pagedir.h"
+#include "threads/vaddr.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
 
 static void kill (struct intr_frame *);
 static void page_fault (struct intr_frame *);
+
+static void exit(int status);
 
 /* Registers handlers for interrupts that can be caused by user
    programs.
@@ -140,13 +144,20 @@ page_fault (struct intr_frame *f)
      be assured of reading CR2 before it changed). */
   intr_enable ();
 
+
   /* Count page faults. */
   page_fault_cnt++;
+
+  exit(-1);
 
   /* Determine cause. */
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
+
+  
+
+  // exit (-1);
 
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
@@ -156,6 +167,40 @@ page_fault (struct intr_frame *f)
           not_present ? "not present" : "rights violation",
           write ? "writing" : "reading",
           user ? "user" : "kernel");
+
+   printf("%p and %p", f->esp, f->eax);
   kill (f);
 }
 
+
+
+
+static void 
+exit (int status)
+{
+  struct thread *cur = thread_current();
+  struct child_status *child;
+  struct list_elem *e;
+  struct file_descriptor *fd_struct;
+  
+  struct thread *parent = thread_get_by_id(cur->parent_id);
+
+
+  if(parent != NULL)
+  {
+    for (e = list_begin(&parent->children); e != list_tail(&parent->children); e = list_next(e))
+    {
+      child = list_entry(e, struct child_status, child_elem);
+      
+      if(child->child_id == cur->tid)
+      {
+        lock_acquire(&parent->lock_child);
+        child->is_exit_called = true;
+        child->exit_status = status;
+        lock_release(&parent->lock_child);
+      }
+    }
+  }
+  printf("%s: exit(%d)\n", thread_name(), status);
+  thread_exit();
+}

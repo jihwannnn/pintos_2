@@ -428,6 +428,9 @@ intr_dump_frame (const struct intr_frame *f)
           f->esi, f->edi, (uint32_t) f->esp, f->ebp);
   printf (" cs=%04"PRIx16" ds=%04"PRIx16" es=%04"PRIx16" ss=%04"PRIx16"\n",
           f->cs, f->ds, f->es, f->ss);
+  
+  // ASSERT(false);
+
 }
 
 /* Returns the name of interrupt VEC. */

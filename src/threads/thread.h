@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/synch.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -107,11 +108,64 @@ struct thread
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
+    
+    // pt 2-2, 추가 선언
+
+    // pt 2-2, thread id of parent
+    tid_t parent_id;
+
+    /* pt 2-2, signal to indicate the child's executable-loading status 
+    * 0: has not been loaded
+    * -1: load failed
+    * 1: load successed */
+    int child_load_status;
+
+    /* pt 2-2, monitor used to wait the child, owned by wait-syscall
+    * and waiting for child t load executable */
+    struct lock lock_child;
+    struct condition cond_child;
+    // pt debugging
+    // struct locking locks;
+
+    /* pt 2-2,  list of children, which should be a list of struct child_status */
+    struct list children;
+
+    /* pt 2-2, file struct represents the execuatable of the current thread */
+    struct file *exec_file;
+
+    // pt 2-3 fdt imp
+    struct fdt *t_fdt;
+  
+
 #endif
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
+
+// pt 2-2 child status
+struct child_status 
+   {
+      tid_t child_id;
+      bool is_exit_called;
+      bool has_been_waited;
+      int exit_status;
+      struct list_elem child_elem;  
+   };
+
+struct fdt
+   {
+      struct file **fdt_pointer;
+      int *fdt_index;
+   };
+
+// pt debugging locking이 제대로 안되서 추가
+// struct locking
+//    {
+//       struct lock *lock_child;
+//       struct condition *cond_child;
+//    };
+   
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
@@ -169,5 +223,8 @@ int thread_get_nice (void);
 void thread_set_nice (int nice);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+// pt 2-2 thread_get_by_id
+struct thread *thread_get_by_id (tid_t id);
 
 #endif /* threads/thread.h */

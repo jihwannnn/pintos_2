@@ -17,9 +17,83 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "threads/synch.h"
+
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
+static void argument_stack(const char **argv, int argc, void **esp);
+
+/* jh 추가 함수1 */
+// static void argument_stack(const char **argv, int argc, void **esp)
+// {
+//   int i;
+//   char *token;
+//   char **argv_addr = calloc(argc+1, sizeof(char *));
+
+  
+
+//   /* jh arguments 저장 */
+//   for (i = argc-1; i >= 0; i--)
+//     {
+
+//       token = argv[i];
+//       *esp-= strlen(token) + 1;
+//       memcpy(*esp, token, strlen(token) + 1);
+//       argv_addr[i] = *esp;
+//       printf("%s and %p\n", token, *esp);
+//     }
+  
+//   /* jh word alignment */
+//   while((int)*esp%4!=0)
+//   {
+//     *esp-= 1;
+//     memset(*esp, 0, 1);
+//     printf("%p\n", *esp);
+//   }
+
+//   /* jh Null Pointer와 argv_addr */
+
+//   for (i = argc; i >= 0; i--)
+//   {
+//     if (i == argc)
+//     {
+//       *esp-= 4;
+//       memset(*esp, 0, 4);
+//       printf("%p\n", *esp);
+//     }
+
+//     else
+//     {
+//       token = argv_addr[i];
+//       *esp-= sizeof(char *);
+//       memcpy(*esp, token, sizeof(char *));
+//       printf("%p and %p\n", token, *esp);
+//     }
+//   }
+
+//   /* jh argv */
+//   *esp-= 4;
+//   // memcpy(*esp, *(esp)+4, 4);
+//   // printf("%p and %p\n", *(esp)+4, *esp);
+
+//   memcpy(*esp, argv_addr[0], 4);
+//   printf("%p and %p\n", argv_addr[0], *esp);
+
+
+//   /* jh argc */
+//   *esp-= 4;
+//   memcpy(*esp, &argc, 4);
+//   printf("%p and %p\n", &argc, *esp);
+
+//   /* jh fake address */
+//   *esp-= 4;
+//   memset(*esp, 0, 4);
+//   printf("%p\n", *esp);
+
+//   hex_dump(*esp, *esp, PHYS_BASE-*esp, true);
+
+// }
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -30,6 +104,11 @@ process_execute (const char *file_name)
 {
   char *fn_copy;
   tid_t tid;
+  
+  // pt 2-2 추가 선언
+  struct child_status *child;
+  struct thread *cur;
+  char *fn_copy_2;
 
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
@@ -38,15 +117,41 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
+  // pt 2 right violation 오류 해결 중..
+  fn_copy_2 = palloc_get_page (0);
+  if (fn_copy == NULL)
+    return TID_ERROR;
+  strlcpy (fn_copy_2, file_name, PGSIZE);
+
   /* Parse file_name for get file_name without arguments */
   char *saveptr;
-  file_name = strtok_r(file_name, " ", &saveptr);
-
+  char *file_name_first = strtok_r(fn_copy_2, " ", &saveptr);
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (file_name_first, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
+  {
+    palloc_free_page (fn_copy);
+  }
+
+  // pt 2-2 child status 저장
+  else
+  {
+    cur = thread_current();
+    child = calloc(1, sizeof(*child));
+
+    if(child != NULL)
+    {
+      child->child_id = tid;
+      child->is_exit_called = false;
+      child->has_been_waited = false;
+      list_push_back(&cur->children, &child->child_elem);
+    }
+  }
+
+  struct thread *t = thread_get_by_id(tid);
+  t->parent_id = cur->tid;
+
   return tid;
 }
 
@@ -59,6 +164,37 @@ start_process (void *file_name_)
   struct intr_frame if_;
   bool success;
 
+  /* jh 추가 선언 */
+  // int argc = 0;
+  // char *saveptr;
+  // char *token;
+  int load_status;
+  // int count = 128;
+
+  /* jh argv 선언 1 */
+  // char **argv = calloc(count, sizeof(char*));
+
+  struct thread *parent;
+  struct thread *cur = thread_current();
+
+  // int i;
+
+  /* jh argc 세기 */
+  // for (token = strtok_r(file_name, " ", &saveptr), i = 0; token != NULL; token = strtok_r(NULL, " ", &saveptr), i++)
+  // {
+  //   argc++;
+  //   argv[i] = token;
+  // }
+  
+  /* jh argv에 넣기 */
+  // for (token = strtok_r(file_name, " ", &saveptr); token != NULL; token = strtok_r(NULL, " ", &saveptr))
+  // {
+  //   argv[i]= token;
+  //   printf("%s\n", token);
+  //   i++;
+  // }
+  
+
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
@@ -66,10 +202,45 @@ start_process (void *file_name_)
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
 
-  /* If load failed, quit. */
-  palloc_free_page (file_name);
-  if (!success) 
-    thread_exit ();
+
+  
+
+  
+  
+  if(!success)
+  {
+    load_status = -1;
+    /* jh free argv 하기 */
+    // free(argv);
+    thread_exit();
+    /* If load failed, quit. */
+    palloc_free_page (file_name);
+
+  }
+
+  /* jh 성공했을때 */
+  else if(success)
+  {
+    load_status = 1;
+    // argument_stack(argv, argc, &if_.esp);
+  }
+
+  // pt 2-2 추가 구현..
+  parent = thread_get_by_id (cur->parent_id);
+
+  if (parent != NULL)
+  {
+    lock_acquire(&parent->lock_child);
+
+    parent->child_load_status = load_status;
+
+    if(&parent->cond_child.waiters != NULL)
+      cond_signal(&parent->cond_child, &parent->lock_child);
+      
+    lock_release(&parent->lock_child);
+  }
+
+  
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -78,6 +249,7 @@ start_process (void *file_name_)
      we just point the stack pointer (%esp) to our stack frame
      and jump to it. */
   asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory");
+
   NOT_REACHED ();
 }
 
@@ -91,18 +263,85 @@ start_process (void *file_name_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid) 
 {
-  //while(1);
-  return -1;
+  /* jh 2-1 test를 위한 무한 루프 */
+  // while(1) {}
+
+  int status;
+
+  // pt 2-2 tid valid한지 확인
+  if (child_tid <= TID_ERROR)
+  {
+    status = -1;
+    return status;
+  }
+
+  // pt 2-2 cur의 children에서 child_tid인 child찾기
+  struct thread *cur = thread_current();
+  struct child_status *child;
+  struct list_elem *e;
+
+
+  e = list_tail (&cur->children);
+
+  while (e != list_head (&cur->children))
+  {
+    child = list_entry(e, struct child_status, child_elem);
+
+    if (child->child_id == child_tid)
+      break;
+
+    e = list_prev(e);
+  }
+  
+  
+
+  if (child == NULL)
+  {
+    status = -1;
+    return status;
+  }
+
+  lock_acquire(&cur->lock_child);
+
+  while(thread_get_by_id(child_tid)->pagedir != NULL)
+  {
+    cond_wait(&cur->cond_child, &cur->lock_child);
+  }
+
+  if (child->is_exit_called)
+  {
+    if (!child->has_been_waited)
+    {
+      status = child->exit_status;
+      child->has_been_waited = true;
+    }
+    else
+      status = -1;
+  }
+  else
+    status = -1;
+
+  lock_release(&cur->lock_child);
+
+  return status;
 }
 
 /* Free the current process's resources. */
 void
 process_exit (void)
 {
-  struct thread *cur = thread_current ();
+  struct thread *cur = thread_current();
   uint32_t *pd;
+
+  // pt 2-3 추가 선언..
+  struct child_status *child;
+  struct list_elem *e;
+  struct list_elem *next;
+  struct thread *parent;
+
+
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -119,6 +358,37 @@ process_exit (void)
       cur->pagedir = NULL;
       pagedir_activate (NULL);
       pagedir_destroy (pd);
+    }
+  
+  // pt 2-3 추가 구현..
+  e = list_begin (&cur->children);
+
+  while (e != list_tail(&cur->children))
+  {
+    next = list_next (e);
+    child = list_entry (e, struct child_status, child_elem);
+    list_remove (e);
+    free (child);
+    e = next;
+  }
+
+  if (cur->exec_file != NULL)
+    file_allow_write (cur->exec_file);
+
+  close_file_by_owner(cur->tid);
+  
+  parent = thread_get_by_id(cur->parent_id);
+
+  if(parent != NULL)
+    {
+      lock_acquire (&parent->lock_child);
+
+      if(parent->child_load_status == 0)
+	      parent->child_load_status = -1;
+
+      cond_signal(&parent->cond_child, &parent->lock_child);
+
+      lock_release(&parent->lock_child);
     }
 }
 
@@ -228,7 +498,19 @@ load (const char *file_name, void (**eip) (void), void **esp)
   process_activate ();
 
   /* Open executable file. */
-  file = filesys_open (file_name);
+
+  // pt filename 받기
+  char *fn_copy = palloc_get_page (0);
+  char *saveptr;
+
+  if (fn_copy == NULL)
+    return TID_ERROR;
+
+  strlcpy (fn_copy, file_name, PGSIZE);
+  char *file_real_name = strtok_r(fn_copy, " ", &saveptr);
+  
+
+  file = filesys_open (file_real_name);
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", file_name);
@@ -249,6 +531,10 @@ load (const char *file_name, void (**eip) (void), void **esp)
     }
 
   /* Read program headers. */
+
+  // pt 2-3
+  // file_deny_write(file);
+
   file_ofs = ehdr.e_phoff;
   for (i = 0; i < ehdr.e_phnum; i++) 
     {
@@ -319,6 +605,11 @@ load (const char *file_name, void (**eip) (void), void **esp)
  done:
   /* We arrive here whether the load is successful or not. */
   file_close (file);
+
+  // pt 2-3
+  // file_allow_write(file);
+  palloc_free_page (fn_copy);
+
   return success;
 }
 
@@ -501,7 +792,7 @@ setup_stack (void **esp, char * file_name)
   *esp-=sizeof(int);
   memcpy(*esp,&zero,sizeof(int));
 
-  hex_dump(*esp, *esp, PHYS_BASE - (*esp), true);
+  // hex_dump(*esp, *esp, PHYS_BASE - (*esp), true);
 
   return success;
 }

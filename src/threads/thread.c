@@ -431,6 +431,7 @@ thread_create (const char *name, int priority,
   struct switch_threads_frame *sf;
   tid_t tid;
   enum intr_level old_level;
+    
 
   ASSERT (function != NULL);
 
@@ -464,6 +465,18 @@ thread_create (const char *name, int priority,
   sf->ebp = 0;
 
   intr_set_level (old_level);
+
+  //pt 2-3 file struct
+  // #ifdef USERPROG
+	// t->t_fdt->fdt_pointer = (struct file **)palloc_get_page(PAL_ZERO);
+	// if (t->t_fdt->fdt_pointer == NULL)
+	// {
+	// 	palloc_free_page((void *)t->t_fdt->fdt_pointer);
+	// 	return TID_ERROR;
+	// }
+	// t->t_fdt->fdt_pointer[0] = 0; /* For stdin. */
+	// t->t_fdt->fdt_pointer[1] = 1; /* For stdout. */
+  // #endif
 
   /* Add to run queue. */
   thread_unblock (t);
@@ -563,6 +576,7 @@ thread_exit (void)
 #ifdef USERPROG
   process_exit ();
 #endif
+
 
   /* Remove thread from all threads list, set our status to dying,
      and schedule another process.  That process will destroy us
@@ -701,6 +715,32 @@ thread_get_recent_cpu (void)
   return recent_cpu;
 }
 
+// pt 2-2 thread_get_by_id
+struct thread *
+thread_get_by_id (tid_t id)
+{
+  ASSERT (id != TID_ERROR);
+
+  struct list_elem *e;
+  struct thread *t;
+
+  
+  for (e = list_begin(&all_list); e != list_tail(&all_list); e = list_next(e)) 
+    {
+      t = list_entry (e, struct thread, allelem);
+
+      if (t->tid == id && t->status != THREAD_DYING)
+      {
+        return t;
+      }
+    }
+
+  
+  
+
+  return NULL;
+}
+
 /* Idle thread.  Executes when no other thread is ready to run.
 
    The idle thread is initially put on the ready list by
@@ -796,6 +836,19 @@ init_thread (struct thread *t, const char *name, int priority)
   t->recent_cpu = 0;
 
   t->magic = THREAD_MAGIC;
+
+  /* pt 2-2 userporg을 위한 init */
+  #ifdef USERPROG
+
+  t->child_load_status = 0;
+  
+  lock_init (&t->lock_child);
+  cond_init (&t->cond_child);
+  list_init (&t->children);
+
+  #endif
+
+
   list_push_back (&all_list, &t->allelem);
 }
 
