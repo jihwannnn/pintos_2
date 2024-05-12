@@ -68,3 +68,29 @@ ___Need to Add/Modify___
 
 - Modify "tid_t process_execute(const char *file_name)" (userprog/process.c)
 - Modify "int process_wait(tid_t child_tid)" (userprog/process.c)
+
+#### 3. File Manipulation
+
+___Need to Add/Modify___
+
+**userprog/syscall.**
+
+- Define struct file_descriptor (userprog/syscall.c)
+- Add bool create (const char *file_name, unsigned size) (userprog/syscall.c)
+- Add bool remove (const char *file_name) (userprog/syscall.c) 
+- Add int open (const char *file_name) (userprog/syscall.c) 
+- Add int filesize (int fd) (userprog/syscall.c) 
+- Add int read (int fd, void *buffer, unsigned size) (userprog/syscall.c) 
+- Add int write (int fd, const void *buffer, unsigned size) (userprog/syscall.c) 
+- Add void seek (int fd, unsigned position) (userprog/syscall.c) 
+- Add unsigned tell (int fd) (userprog/syscall.c)
+- Add void close (int fd) (userprog/syscall.c) 
+- Add struct file_descriptor *get_open_file (int fd) (userprog/syscall.c) 
+- Add void close_open_file (int fd) (userprog/syscall.c)
+- Add bool is_valid_ptr (const void *usr_ptr) (userprog/syscall.c) 
+- Add int allocate_fd () (userprog/syscall.c) 
+- Add void close_file_by_owner (tid_t tid) (userprog/syscall.c) 
+
+**userprog/process.**
+- Modify bool load (const char *file_name, void (**eip) (void), void **esp) (userprog/process.c)
+- Modify void process_exit (void) (userprog/process.c
