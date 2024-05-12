@@ -207,7 +207,10 @@ exec (const char *cmd_line)
     cond_wait(&cur->cond_child, &cur->lock_child);
 
   if(cur->child_load_status == -1)
+  {
     tid = -1;
+  }
+    
 
 
   lock_release(&cur->lock_child);
@@ -339,13 +342,13 @@ read (int fd, void *buffer, unsigned size)
 
   lock_acquire(&fs_lock);
 
-  if(fd == 1)
+  if(fd == STDOUT_FILENO)
   {
     status = -1;
     goto done;
   }
 
-  else if(fd == 0)
+  else if(fd == STDIN_FILENO)
   {
     buffer = input_getc();
     status = (int *) buffer;
@@ -375,13 +378,13 @@ write (int fd, const void *buffer, unsigned size)
 
   lock_acquire(&fs_lock);
 
-  if(fd == 0)
+  if(fd == STDIN_FILENO)
   {
     status = -1;
     goto done;
   }
 
-  else if(fd == 1)
+  else if(fd == STDOUT_FILENO)
   {
     putbuf(buffer, size);
     status = size;
@@ -391,7 +394,9 @@ write (int fd, const void *buffer, unsigned size)
   else
   {
     fd_struct = get_open_file(fd);
-    status = file_write(fd_struct->file_struct, buffer, size);
+
+    if(fd_struct != NULL)
+        status = file_write(fd_struct->file_struct, buffer, size);
     goto done;
   }
 

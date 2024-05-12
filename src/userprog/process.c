@@ -108,6 +108,7 @@ process_execute (const char *file_name)
   // pt 2-2 추가 선언
   struct child_status *child;
   struct thread *cur;
+  char *fn_copy_2;
 
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
@@ -116,9 +117,15 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
+  // pt 2 right violation 오류 해결 중..
+  fn_copy_2 = palloc_get_page (0);
+  if (fn_copy == NULL)
+    return TID_ERROR;
+  strlcpy (fn_copy_2, file_name, PGSIZE);
+
   /* Parse file_name for get file_name without arguments */
   char *saveptr;
-  char *file_name_first = strtok_r(file_name, " ", &saveptr);
+  char *file_name_first = strtok_r(fn_copy_2, " ", &saveptr);
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (file_name_first, PRI_DEFAULT, start_process, fn_copy);
@@ -203,7 +210,6 @@ start_process (void *file_name_)
   if(!success)
   {
     load_status = -1;
-    
     /* jh free argv 하기 */
     // free(argv);
     thread_exit();
@@ -223,16 +229,16 @@ start_process (void *file_name_)
   parent = thread_get_by_id (cur->parent_id);
 
   if (parent != NULL)
-    {
-      lock_acquire(&parent->lock_child);
+  {
+    lock_acquire(&parent->lock_child);
 
-      parent->child_load_status = load_status;
+    parent->child_load_status = load_status;
 
-      if(&parent->cond_child.waiters != NULL)
-        cond_signal(&parent->cond_child, &parent->lock_child);
+    if(&parent->cond_child.waiters != NULL)
+      cond_signal(&parent->cond_child, &parent->lock_child);
       
-      lock_release(&parent->lock_child);
-    }
+    lock_release(&parent->lock_child);
+  }
 
   
 
