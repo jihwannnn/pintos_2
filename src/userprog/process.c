@@ -263,6 +263,7 @@ process_wait (tid_t child_tid)
   // while(1) {}
 
   int status;
+
   // pt 2-2 tid valid한지 확인
   if (child_tid <= TID_ERROR)
   {
@@ -273,25 +274,24 @@ process_wait (tid_t child_tid)
   // pt 2-2 cur의 children에서 child_tid인 child찾기
   struct thread *cur = thread_current();
   struct child_status *child;
-  bool no_child_found = true;
   struct list_elem *e;
 
-  int i = 100;
 
+  e = list_tail (&cur->children);
 
-  for (e = list_begin(&cur->children); e != list_tail(&cur->children); e = list_next(e))
+  while (e != list_head (&cur->children))
   {
     child = list_entry(e, struct child_status, child_elem);
+
     if (child->child_id == child_tid)
-    {
-      no_child_found = false;
       break;
-    }
+
+    e = list_prev(e);
   }
   
   
 
-  if (no_child_found)
+  if (child == NULL)
   {
     status = -1;
     return status;
@@ -332,6 +332,7 @@ process_exit (void)
   // pt 2-3 추가 선언..
   struct child_status *child;
   struct list_elem *e;
+  struct list_elem *next;
   struct thread *parent;
 
 
@@ -352,14 +353,18 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
-
+  
   // pt 2-3 추가 구현..
-  for(e = list_begin(&cur->children); e != list_tail(&cur->children); e = list_next(e))
-    {
-      child = list_entry(e, struct child_status, child_elem);
-      list_remove(e);
-      free(child);
-    }
+  e = list_begin (&cur->children);
+
+  while (e != list_tail(&cur->children))
+  {
+    next = list_next (e);
+    child = list_entry (e, struct child_status, child_elem);
+    list_remove (e);
+    free (child);
+    e = next;
+  }
 
   if (cur->exec_file != NULL)
     file_allow_write (cur->exec_file);
@@ -367,7 +372,6 @@ process_exit (void)
   close_file_by_owner(cur->tid);
   
   parent = thread_get_by_id(cur->parent_id);
-
 
   if(parent != NULL)
     {
@@ -380,7 +384,6 @@ process_exit (void)
 
       lock_release(&parent->lock_child);
     }
-  
 }
 
 /* Sets up the CPU for running user code in the current
