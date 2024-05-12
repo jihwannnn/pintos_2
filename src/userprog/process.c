@@ -299,7 +299,7 @@ process_wait (tid_t child_tid)
 
   lock_acquire(&cur->lock_child);
 
-  while(thread_get_by_id(child_tid) != NULL)
+  while(thread_get_by_id(child_tid)->pagedir != NULL)
   {
     cond_wait(&cur->cond_child, &cur->lock_child);
   }

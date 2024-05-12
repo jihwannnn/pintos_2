@@ -2,24 +2,19 @@
 #include <stdio.h>
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
-#include "threads/thread.h"
-
-// pt 2-2 추가 include
-#include "userprog/pagedir.h"
 #include "threads/vaddr.h"
+#include "userprog/pagedir.h"
 #include "devices/shutdown.h"
 #include "filesys/filesys.h"
+#include "threads/malloc.h"
 #include "filesys/file.h"
-#include "threads/synch.h"
 #include "devices/input.h"
+#include "threads/thread.h"
 
-// pt 2 pid_t
+
 typedef int pid_t;
 
-static void syscall_handler (struct intr_frame *);
-
 // pt 2-3 struct file_descriptor
-
 struct file_descriptor
 {
   int fd_num;                   // uniquely identifying each files of the process
@@ -32,10 +27,15 @@ struct list open_files; // open list
 struct lock fs_lock;    // lock for files
 
 
+
+static void syscall_handler (struct intr_frame *);
+
+
+
 // pt 2-2 함수 추가
 bool is_valid_ptr (const void *usr_ptr);
 int wait (pid_t pid);
-void exit (int status);
+static void exit (int status);
 pid_t exec (const char *cmd_line);
 void halt(void);
 
@@ -55,19 +55,12 @@ void close_open_file (int fd);
 static int allocate_fd(void);
 void close_file_by_owner(tid_t tid);
 
-
-
-
-
-
 void
 syscall_init (void) 
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
-
-  // pt 2-3 init list and lock
-  list_init(&open_files);
-  lock_init(&fs_lock);
+  list_init (&open_files);
+  lock_init (&fs_lock);
 }
 
 static void
@@ -140,7 +133,7 @@ syscall_handler (struct intr_frame *f)
     
     default:
       break;
-  }
+    }
 
   
   // printf ("system call %d!\n", num);
@@ -160,15 +153,13 @@ is_valid_ptr (const void *usr_ptr)
   return is_user_vaddr(usr_ptr) && pagedir_get_page(cur->pagedir, usr_ptr);
 }
 
-// pt 2-2 handler methods
-
 int 
 wait (pid_t pid)
-{
+{ 
   return process_wait(pid);
 }
 
-void 
+static void 
 exit (int status)
 {
   struct thread *cur = thread_current();
@@ -194,13 +185,7 @@ exit (int status)
       }
     }
   }
-
-  close_file_by_owner(cur->tid);
-
-  
-  // palloc_free_page((void *)cur->t_fdt->fdt_pointer);
   printf("%s: exit(%d)\n", thread_name(), status);
-
   thread_exit();
 }
 
@@ -230,10 +215,10 @@ exec (const char *cmd_line)
   return tid;
 }
 
-void 
+void
 halt (void)
 {
-  shutdown_power_off();
+  shutdown_power_off ();
 }
 
 bool 
@@ -268,7 +253,6 @@ remove (const char *file_name)
   return status;
 }
 
-
 int 
 open (const char *file_name)
 {
@@ -276,7 +260,8 @@ open (const char *file_name)
   struct file *f;
   struct file_descriptor *fd;
 
-  if(!is_valid_ptr(file_name)) exit(-1);
+  if(!is_valid_ptr(file_name))
+    exit(-1);
 
   lock_acquire(&fs_lock);
 
@@ -284,14 +269,12 @@ open (const char *file_name)
 
   if(f != NULL)
   {
-
-    fd = calloc(1, sizeof(struct file_descriptor*));
+    fd = calloc(1, sizeof *fd);
     fd->fd_num = allocate_fd();
+    fd->owner = thread_current()->tid;
     fd->file_struct = f;
     list_push_back(&open_files, &fd->elem);
     status = fd->fd_num;
-
-    fd->owner = thread_current()->tid;
   }
 
   else status = -1;
@@ -305,10 +288,9 @@ int
 filesize (int fd)
 {
   int status;
+  struct file_descriptor *fd_struct = get_open_file(fd);
 
   lock_acquire(&fs_lock);
-
-  struct file_descriptor *fd_struct = get_open_file(fd);
 
   if(fd_struct != NULL)
   {
@@ -317,195 +299,468 @@ filesize (int fd)
 
   else status = -1;
 
+  lock_release (&fs_lock);
+
   return status;
 }
 
-struct file_descriptor *
-get_open_file (int fd)
-{
-  struct list_elem *e;
-  struct file_descriptor *fd_struct;
-  bool match_found = false;
+// 현수형 여기까지만 일단 수정!!
 
-  for (e = list_begin(&open_files); e != list_tail(&open_files); e = list_next(e))
-  {
-    fd_struct = list_entry(e, struct file_descriptor, elem);
-
-    if (fd_struct->fd_num == fd)
-    {
-      match_found = true;
-      break;
-    }
-  }
-
-  if(match_found) return fd_struct;
-  else return NULL;
-}
-
-int 
+int
 read (int fd, void *buffer, unsigned size)
 {
-  
-  int status;
   struct file_descriptor *fd_struct;
+  int status = 0;
+  struct thread *t = thread_current ();
 
-  if(!is_valid_ptr(buffer)) exit(-1);
+  unsigned buffer_size = size;
+  void * buffer_tmp = buffer;
 
-  lock_acquire(&fs_lock);
-
-  if(fd == 1)
+  /* check the user memory pointing by buffer are valid */
+  while (buffer_tmp != NULL)
   {
-    status = -1;
-    goto done;
+      /* Advance */
+      if (buffer_size == 0)
+	    {
+	    /* terminate the checking loop */
+	      buffer_tmp = NULL;
+	    }
+      else if (buffer_size > PGSIZE)
+	    {
+        buffer_tmp += PGSIZE;
+        buffer_size -= PGSIZE;
+	    }
+      else
+	    {
+	  /* last loop */
+        buffer_tmp = buffer + size - 1;
+        buffer_size = 0;
+	    }
   }
 
-  else if(fd == 0)
-  {
-    buffer = input_getc();
-    status = (int *) buffer;
-    goto done;
-  }
-
-  else
-  {
-    fd_struct = get_open_file(fd);
-    status = file_read(fd_struct->file_struct, buffer, size);
-    goto done;
-  }
-
-  done:
-    lock_release(&fs_lock);
-
+  lock_acquire (&fs_lock);   
+  if (fd == STDOUT_FILENO)
+      status = -1;
+  else if (fd == STDIN_FILENO)
+    {
+      uint8_t c;
+      unsigned counter = size;
+      uint8_t *buf = buffer;
+      while (counter > 1 && (c = input_getc()) != 0)
+        {
+          *buf = c;
+          buffer++;
+          counter--; 
+        }
+      *buf = 0;
+      status = size - counter;
+    }
+  else 
+    {
+      fd_struct = get_open_file (fd);
+      if (fd_struct != NULL)
+	status = file_read (fd_struct->file_struct, buffer, size);
+    }
+  lock_release (&fs_lock);
   return status;
 }
 
-int 
+int
 write (int fd, const void *buffer, unsigned size)
 {
-  int status;
-  struct file_descriptor *fd_struct;
+  struct file_descriptor *fd_struct;  
+  int status = 0;
 
-  if(!is_valid_ptr(buffer)) exit(-1);
+  unsigned buffer_size = size;
+  void *buffer_tmp = buffer;
 
-  lock_acquire(&fs_lock);
+  /* check the user memory pointing by buffer are valid */
+  while (buffer_tmp != NULL)
+    {
+      if (!is_valid_ptr (buffer_tmp))
+	exit (-1);
+      
+      /* Advance */ 
+      if (buffer_size > PGSIZE)
+	{
+	  buffer_tmp += PGSIZE;
+	  buffer_size -= PGSIZE;
+	}
+      else if (buffer_size == 0)
+	{
+	  /* terminate the checking loop */
+	  buffer_tmp = NULL;
+	}
+      else
+	{
+	  /* last loop */
+	  buffer_tmp = buffer + size - 1;
+	  buffer_size = 0;
+	}
+    }
 
-  if(fd == 0)
-  {
-    status = -1;
-    goto done;
-  }
-
-  else if(fd == 1)
-  {
-    putbuf(buffer, size);
-    status = size;
-    goto done;
-  }
-
-  else
-  {
-    fd_struct = get_open_file(fd);
-    status = file_write(fd_struct->file_struct, buffer, size);
-    goto done;
-  }
-
-  done:
-    lock_release(&fs_lock);
+  lock_acquire (&fs_lock); 
+  if (fd == STDIN_FILENO)
+    {
+      status = -1;
+    }
+  else if (fd == STDOUT_FILENO)
+    {
+      putbuf (buffer, size);;
+      status = size;
+    }
+  else 
+    {
+      fd_struct = get_open_file (fd);
+      if (fd_struct != NULL)
+	status = file_write (fd_struct->file_struct, buffer, size);
+    }
+  lock_release (&fs_lock);
 
   return status;
 }
+
 
 void 
 seek (int fd, unsigned position)
 {
-  lock_acquire(&fs_lock);
-
-  struct file_descriptor *fd_struct = get_open_file(fd);
-
-  if (fd_struct != NULL) file_seek(fd_struct->file_struct, position);
-
-  lock_release(&fs_lock);
-
+  struct file_descriptor *fd_struct;
+  lock_acquire (&fs_lock); 
+  fd_struct = get_open_file (fd);
+  if (fd_struct != NULL)
+    file_seek (fd_struct->file_struct, position);
+  lock_release (&fs_lock);
+  return ;
 }
 
 unsigned 
 tell (int fd)
 {
-  unsigned status;
-
-  lock_acquire(&fs_lock);
-
-  struct file_descriptor *fd_struct = get_open_file(fd);
-
-  if(fd_struct != NULL) status = file_tell(fd_struct->file_struct);
-
-  else status = 0;
-
-  lock_release(&fs_lock);
-
+  struct file_descriptor *fd_struct;
+  int status = 0;
+  lock_acquire (&fs_lock); 
+  fd_struct = get_open_file (fd);
+  if (fd_struct != NULL)
+    status = file_tell (fd_struct->file_struct);
+  lock_release (&fs_lock);
   return status;
 }
 
 void 
 close (int fd)
 {
-  struct thread *cur = thread_current();
-
-  lock_acquire(&fs_lock);
-
-  struct file_descriptor *fd_struct = get_open_file(fd);
-
-  if(fd_struct != NULL) 
-  {
-    if(cur->tid == fd_struct->owner)
-      close_open_file(fd);
-  }
-
-  lock_release(&fs_lock);
+  struct file_descriptor *fd_struct;
+  lock_acquire (&fs_lock); 
+  fd_struct = get_open_file (fd);
+  if (fd_struct != NULL && fd_struct->owner == thread_current ()->tid)
+    close_open_file (fd);
+  lock_release (&fs_lock);
+  return ; 
 }
 
-void 
+
+/* Helper functions */
+
+struct file_descriptor *
+get_open_file (int fd)
+{
+  struct list_elem *e;
+  struct file_descriptor *fd_struct; 
+  e = list_tail (&open_files);
+  while ((e = list_prev (e)) != list_head (&open_files)) 
+    {
+      fd_struct = list_entry (e, struct file_descriptor, elem);
+      if (fd_struct->fd_num == fd)
+	return fd_struct;
+    }
+  return NULL;
+}
+
+void
 close_open_file (int fd)
 {
   struct list_elem *e;
-  struct file_descriptor *fd_struct;
-
-  for (e = list_begin(&open_files); e != list_tail(&open_files); e = list_next(e))
-  {
-    fd_struct = list_entry(e, struct file_descriptor, elem);
-
-    if(fd_struct->fd_num == fd)
+  struct list_elem *prev;
+  struct file_descriptor *fd_struct; 
+  e = list_end (&open_files);
+  while (e != list_head (&open_files)) 
     {
-      list_remove(e);
-      file_close(fd_struct->file_struct);
-      free(fd_struct);
-      break;
+      prev = list_prev (e);
+      fd_struct = list_entry (e, struct file_descriptor, elem);
+      if (fd_struct->fd_num == fd)
+	{
+	  list_remove (e);
+          file_close (fd_struct->file_struct);
+	  free (fd_struct);
+	  return ;
+	}
+      e = prev;
     }
-  }
+  return ;
 }
 
-static int
-allocate_fd(void)
+
+// /* The kernel must be very careful about doing so, because the user can
+//  * pass a null pointer, a pointer to unmapped virtual memory, or a pointer
+//  * to kernel virtual address space (above PHYS_BASE). All of these types of
+//  * invalid pointers must be rejected without harm to the kernel or other
+//  * running processes, by terminating the offending process and freeing
+//  * its resources.
+//  */
+// bool 
+// is_valid_ptr (const void *usr_ptr)
+// {
+//   struct thread *cur = thread_current();
+  
+//   // pt 2-2 NULL 인지 확인
+//   if(usr_ptr == NULL) return false;
+
+//   // pt 2-2 user area인지, 범위 내에 있는지 확인
+//   return is_user_vaddr(usr_ptr) && pagedir_get_page(cur->pagedir, usr_ptr);
+// }
+
+int
+allocate_fd ()
 {
-  static int fs_id_t = 0;
-  int fs_id = fs_id_t++;
-  return fs_id;
+  static int fd_current = 1;
+  return ++fd_current;
 }
 
-void 
-close_file_by_owner(tid_t tid)
+void
+close_file_by_owner (tid_t tid)
 {
   struct list_elem *e;
-  struct file_descriptor *fd_struct;
+  struct list_elem *next;
+  struct file_descriptor *fd_struct; 
 
-  for (e = list_begin(&open_files); e != list_tail(&open_files); e = list_next(e))
-  {
-    fd_struct = list_entry(e, struct file_descriptor, elem);
-    if(fd_struct->owner == tid)
+  e = list_begin (&open_files);
+  while (e != list_tail (&open_files)) 
     {
-      list_remove(e);
-      file_close(fd_struct->file_struct);
-      free(fd_struct);
+      next = list_next (e);
+      fd_struct = list_entry (e, struct file_descriptor, elem);
+
+      if (fd_struct->owner == tid)
+	    {
+	      list_remove (e);
+	      file_close (fd_struct->file_struct);
+        free (fd_struct);
+	    }
+      e = next;
     }
-  }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// struct file_descriptor *
+// get_open_file (int fd)
+// {
+//   struct list_elem *e;
+//   struct file_descriptor *fd_struct;
+//   bool match_found = false;
+
+//   for (e = list_begin(&open_files); e != list_tail(&open_files); e = list_next(e))
+//   {
+//     fd_struct = list_entry(e, struct file_descriptor, elem);
+
+//     if (fd_struct->fd_num == fd)
+//     {
+//       match_found = true;
+//       break;
+//     }
+
+//     if(e->next == list_tail(&open_files))
+//      break;
+//   }
+
+//   if(match_found) return fd_struct;
+
+//   else return NULL;
+// }
+
+// int 
+// read (int fd, void *buffer, unsigned size)
+// {
+  
+//   int status;
+//   struct file_descriptor *fd_struct;
+
+//   if(!is_valid_ptr(buffer)) exit(-1);
+
+//   lock_acquire(&fs_lock);
+
+//   if(fd == 1)
+//   {
+//     status = -1;
+//     goto done;
+//   }
+
+//   else if(fd == 0)
+//   {
+//     buffer = input_getc();
+//     status = (int *) buffer;
+//     goto done;
+//   }
+
+//   else
+//   {
+//     fd_struct = get_open_file(fd);
+//     status = file_read(fd_struct->file_struct, buffer, size);
+//     goto done;
+//   }
+
+//   done:
+//     lock_release(&fs_lock);
+
+//   return status;
+// }
+
+// int 
+// write (int fd, const void *buffer, unsigned size)
+// {
+//   int status;
+//   struct file_descriptor *fd_struct;
+
+//   if(!is_valid_ptr(buffer)) exit(-1);
+
+//   lock_acquire(&fs_lock);
+
+//   if(fd == 0)
+//   {
+//     status = -1;
+//     goto done;
+//   }
+
+//   else if(fd == 1)
+//   {
+//     putbuf(buffer, size);
+//     status = size;
+//     goto done;
+//   }
+
+//   else
+//   {
+//     fd_struct = get_open_file(fd);
+//     status = file_write(fd_struct->file_struct, buffer, size);
+//     goto done;
+//   }
+
+//   done:
+//     lock_release(&fs_lock);
+
+//   return status;
+// }
+
+// void 
+// seek (int fd, unsigned position)
+// {
+//   lock_acquire(&fs_lock);
+
+//   struct file_descriptor *fd_struct = get_open_file(fd);
+
+//   if (fd_struct != NULL) file_seek(fd_struct->file_struct, position);
+
+//   lock_release(&fs_lock);
+
+// }
+
+// unsigned 
+// tell (int fd)
+// {
+//   unsigned status;
+
+//   lock_acquire(&fs_lock);
+
+//   struct file_descriptor *fd_struct = get_open_file(fd);
+
+//   if(fd_struct != NULL) status = file_tell(fd_struct->file_struct);
+
+//   else status = 0;
+
+//   lock_release(&fs_lock);
+
+//   return status;
+// }
+
+// void 
+// close (int fd)
+// {
+//   struct thread *cur = thread_current();
+
+//   lock_acquire(&fs_lock);
+
+//   struct file_descriptor *fd_struct = get_open_file(fd);
+
+//   if(fd_struct != NULL) 
+//   {
+//     if(cur->tid == fd_struct->owner)
+//       close_open_file(fd);
+//   }
+
+//   lock_release(&fs_lock);
+// }
+
+// void 
+// close_open_file (int fd)
+// {
+//   struct list_elem *e;
+//   struct file_descriptor *fd_struct;
+
+//   for (e = list_begin(&open_files); e != list_tail(&open_files); e = list_next(e))
+//   {
+//     fd_struct = list_entry(e, struct file_descriptor, elem);
+
+//     if(fd_struct->fd_num == fd)
+//     {
+//       list_remove(e);
+//       file_close(fd_struct->file_struct);
+//       free(fd_struct);
+//       break;
+//     }
+//   }
+// }
+
+// static int
+// allocate_fd(void)
+// {
+//   static int fs_id_t = 1;
+//   int fs_id = fs_id_t++;
+//   return fs_id;
+// }
+
+// void 
+// close_file_by_owner(tid_t tid)
+// {
+//   struct file_descriptor *fd_struct;
+//   struct list_elem *e;
+//   struct list_elem *prev;
+
+//   if(!list_empty(&open_files))
+//   {
+//     e = list_end(&open_files);
+
+//     while(e != list_head(&open_files))
+//     {
+//       fd_struct = list_entry(e, struct file_descriptor, elem);
+
+//       if(fd_struct->owner == tid)
+//       {
+//         list_remove(e);
+//         file_close(fd_struct->file_struct);
+//         free(fd_struct);
+//       }
+//       prev = list_prev (e);
+//       e = prev;
+//     }
+//   }
+// }
